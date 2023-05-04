@@ -6,6 +6,7 @@
 // IMU Variables
 #define maxEntryLength 50
 #define maxSessionLength 20000 //keep an eye on the amount of dynamic memory being used in the compiler message
+#define delayBetweenReadings 50
 LSM6DSO imu;
 SF fusion;
 
@@ -75,7 +76,9 @@ void loop() {
     Serial.print(F("Connected to central: "));
     Serial.println(central.address());
     while(central.connected()){
-      sensorData();
+      if(recordingSession){
+        sensorData();
+      }
 
       if(commandChar.written()){
         String command = commandChar.value();
@@ -95,13 +98,19 @@ void loop() {
 
           case 'x':
             // stop recording session
+            // returns final session length
             Serial.println(F("stop recording session"));
             recordingSession = false;
-            commandChar.setValue(F("stopped session"));
+            commandChar.setValue(String(sessionDataLength));
             break;
             
           case 'g':
             // send session data over dataChar
+            if(recordingSession){
+              Serial.println(F("must stop recording session first"));
+              commandChar.setValue(F("must stop recording session first"));
+              break;
+            }
             Serial.println(F("send session data"));
             commandChar.setValue(F("Sending values"));
             sendSessionData();
@@ -164,19 +173,23 @@ void sensorData(){
     if(recordingSession){
       sessionData[sessionDataLength] = newEntry;
       sessionDataLength += 1;
+      if(timeMillis % 1000 <= delayBetweenReadings){
+        Serial.println("Sending progress report");
+        commandChar.setValue(String(timeMillis/1000));
+      }
       Serial.print(F("Entry:")); Serial.print(sessionDataLength); Serial.print(",");
 
-      // if(sessionDataLength >= maxSessionLength){
-      //   commandChar.setValue(F("Max session length reached"));
-      //   recordingSession = false;
-      // }
+      if(sessionDataLength >= maxSessionLength){
+        commandChar.setValue(F("Max session length reached"));
+        recordingSession = false;
+      }
     }
-    
+
     Serial.print(F("Time:")); Serial.print(newEntry.time_ms); Serial.print(",");
     Serial.print(F("Roll:")); Serial.print(newEntry.roll); Serial.print(",");
     Serial.print(F("Pitch:")); Serial.print(newEntry.pitch); Serial.print(",");
     Serial.print(F("Yaw:")); Serial.print(newEntry.yaw); Serial.println();
 
-    delay(50);
+    delay(delayBetweenReadings);
   }
 }
